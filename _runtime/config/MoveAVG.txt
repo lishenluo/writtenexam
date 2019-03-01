@@ -1,0 +1,42 @@
+Create Proc [dbo].[P_MoveAVGPrice] @AvgNumber int, @TableName varchar(8)
+AS
+
+Declare @SqlString NVARCHAR(2000)
+
+Set @SqlString = '
+Create Table #T_MoveAVG
+(
+	FRowNumber int,
+	FDay varchar(19),
+	FEnd decimal(18,2),
+	FAVG decimal(18,2) default(0)
+	PRIMARY KEY (FRowNumber)
+)
+
+Insert into #T_MoveAVG(FRowNumber, FDay, FEnd)
+Select ROW_NUMBER()over(order by FDay ASC) FRowNumber, FDay, FEnd From '+ @TableName + '
+
+Declare @RowNumber int, @Day varchar(19), @Avg decimal(18,2)
+
+Declare Avg_Cursor Cursor For Select FRowNumber, FDay From #T_MoveAVG
+
+OPEN Avg_Cursor;
+FETCH NEXT FROM Avg_Cursor Into @RowNumber, @Day;
+WHILE @@FETCH_STATUS = 0
+   BEGIN
+	  Select @Avg = AVG(FEnd) From #T_MoveAVG Where @RowNumber >= FRowNumber 
+	  And FRowNumber > @RowNumber - ' + CONVERT(varchar(10), @AvgNumber) + '
+	
+      Update #T_MoveAVG Set FAVG = @Avg Where FRowNumber = @RowNumber
+   
+      FETCH NEXT FROM Avg_Cursor Into @RowNumber, @Day;
+   END;
+CLOSE Avg_Cursor;
+DEALLOCATE Avg_Cursor;
+
+Update #T_MoveAVG Set FAVG = 0 Where FRowNumber < ' + CONVERT(varchar(10), @AvgNumber) + '
+Select * From #T_MoveAVG
+
+Drop Table #T_MoveAVG'
+
+EXECUTE sp_executesql @SqlString
